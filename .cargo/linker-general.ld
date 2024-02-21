@@ -7,7 +7,7 @@ SECTIONS
 {
     /* Load the kernel at this address: "." means the current address */
     . = BASE_ADDRESS;
-    start = .;
+    _skernel = .;
     /*0x80200000*/
     .text ALIGN(4K): {
         stext = .;
@@ -44,6 +44,7 @@ SECTIONS
         *(.sbss .sbss.*)
         _ebss = .;
     }
+    _ekernel = .;
 
     PROVIDE(end = .);
 }
