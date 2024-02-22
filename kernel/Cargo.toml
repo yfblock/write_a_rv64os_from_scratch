@@ -9,3 +9,5 @@ edition = "2021"
 allocator = { path = "../crates/allocator" }
 fdt = "0.1.5"
 timestamp = { path = "../crates/timestamp" }
+log = "0.4"
+spin = { version = "0.9.8", features = ["mutex"] }

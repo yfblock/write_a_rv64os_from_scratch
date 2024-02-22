@@ -5,12 +5,16 @@
 #![feature(asm_const)]
 #![feature(iter_intersperse)]
 
+mod frame;
+mod logging;
 mod sbi;
 
+#[macro_use]
 extern crate alloc;
 extern crate allocator;
 
 use alloc::string::String;
+use log::{debug, error, info, trace, warn};
 use timestamp::DateTime;
 use core::{
     fmt::{self, Write},
@@ -18,6 +22,8 @@ use core::{
 };
 use fdt::Fdt;
 use sbi::{console_putchar, shutdown};
+
+use crate::frame::add_frame_area;
 
 /// RISCV boot: OpenSBI -> OS, a0: hart_id, a1: device_tree
 
@@ -75,44 +81,52 @@ fn clear_bss() {
     }
 }
 
-fn get_program_size() -> usize {
+fn get_kernel_range() -> (usize, usize) {
     extern "C" {
         fn _skernel();
         fn _ekernel();
     }
-    _ekernel as usize - _skernel as usize
+    (_skernel as usize, _ekernel as usize)
 }
+
 
 #[no_mangle]
 fn main(hart_id: usize, device_tree: usize) -> ! {
     clear_bss();
 
     allocator::init();
+    // env: Environment
+    logging::init(option_env!("LOG"));
 
     puts(include_str!("banner.txt"));
-    println!("boot hart: {}", hart_id);
-    println!("program size: {} KB", get_program_size() / 1024);
-    println!("device_tree addr: {:#x}", device_tree); // 0x 十六进制， 0o 八进制， 0b 二进制
+
+    trace!("Hello Trace");
+    debug!("Hello Debug");
+    info!("Hello Info");
+    warn!("Hello Warn");
+    error!("Hello Error");
+
+    info!("boot hart: {}", hart_id);
+    info!("program size: {} KB", (get_kernel_range().1 - get_kernel_range().0) / 1024);
+    info!("program range: {:#x} - {:#x}", get_kernel_range().0, get_kernel_range().1);
+    info!("device_tree addr: {:#x}", device_tree); // 0x 十六进制， 0o 八进制， 0b 二进制
 
     let fdt = unsafe {
         Fdt::from_ptr(device_tree as *const u8).expect("This is a not a valid device tree")
     };
 
-    println!(
+    info!(
         "Platform: {}  {} CPU(s)",
         fdt.root().model(),
         fdt.cpus().count()
     );
-    fdt.memory().regions().for_each(|x| {
-        println!(
-            "Memory region {:#x} - {:#x}",
-            x.starting_address as usize,
-            x.starting_address as usize + x.size.unwrap()
-        );
-    });
+
+    // 1024 1k  0x1000 4k 0x8000000 / 0x1000 = 0x8000 * 4Kb 8 * 4K * 4k = 4*4*8 = 16 * 8 = 128M
+    // x86_64 段式内存管理 页式内存管理  页式 4K
+    
     fdt.all_nodes().for_each(|child| {
         if let Some(compatible) = child.compatible() {
-            println!(
+            info!(
                 "{}  {}",
                 child.name,
                 compatible.all().intersperse(" ").collect::<String>()
@@ -125,10 +139,25 @@ fn main(hart_id: usize, device_tree: usize) -> ! {
                     ((high as u64) << 32) | (low as u64) 
                 } / 1_000_000_000u64;
                 let dt = DateTime::new(timestamp as usize);
-                println!("dt: {:#?}", dt);
+                info!("dt: {:#?}", dt);
             }
         }
     });
+
+    let mut mem_start = 0;
+    let mut mem_size = 0;
+
+    fdt.memory().regions().for_each(|x| {
+        info!(
+            "Memory region {:#x} - {:#x}",
+            x.starting_address as usize,
+            x.starting_address as usize + x.size.unwrap()
+        );
+        mem_start = get_kernel_range().1;
+        mem_size = x.size.unwrap() - (get_kernel_range().1 - 0x8000_0000);
+    });
+    
+    add_frame_area(mem_start, mem_size);
 
     shutdown()
 }
@@ -147,7 +176,7 @@ impl Write for Logger {
 fn panic_handler(info: &PanicInfo) -> ! {
     // puts("");
     // Logger.write_fmt(*info.message().unwrap());
-    println!("An error occurred: {}", info.message().unwrap());
+    error!("An error occurred: {}", info.message().unwrap());
     shutdown()
 }
 

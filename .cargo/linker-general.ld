@@ -44,6 +44,7 @@ SECTIONS
         *(.sbss .sbss.*)
         _ebss = .;
     }
+    . = ALIGN(4K);
     _ekernel = .;
 
     PROVIDE(end = .);

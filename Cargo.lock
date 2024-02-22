@@ -37,6 +37,8 @@ version = "0.1.0"
 dependencies = [
  "allocator",
  "fdt",
+ "log",
+ "spin",
  "timestamp",
 ]
 
